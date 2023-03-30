@@ -46,11 +46,26 @@ General Setup --->
 3816800
 ```
 
-The [.config](.config) file stores my configuration. To use my configuration, load it by the `make menuconfig` UI. Do *not* directly replace the .config file in the Linux source directory.
+The [.config](.config) file stores my configuration. To use my config, load it by the `make menuconfig` UI, or use `make oldconfig` command.
 
 Typically, using XZ compression mode can decrease kernel size but increase compilation time; using -Os compilation decrease kernel size and decrease compilation time; also, excluding features can both decrease size and decrease time.
 
 > Reproducibility notes: Linux kernel version [6.2.8](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.2.8.tar.xz), gcc version [9.4.0](https://packages.ubuntu.com/search?keywords=gcc-9) (Ubuntu 9.4.0-1ubuntu1~16.04).
+
+---
+
+Furthermore, there is a command, `make tinyconfig`, that can create the config for the minimal kernel. (see `make help`)
+
+```sh
+make distclean
+make tinyconfig
+make menuconfig
+make -j$(nproc)
+```
+
+After running these commands, we can get the bzImage file of about 488 KiB.
+
+> However, this kernel lacks the basic support for TTY, so it outputs nothing in QEMU emulation. In addition, we need to include some features to support initramfs and ELF binaries if we want to start up the shell. Nonetheless, the kernel size is sitll much smaller than 1 MiB. Check [this tutorial](https://weeraman.com/building-a-tiny-linux-kernel-8c07579ae79d) and [this how-to](https://github.com/geirha/shbot-initramfs/blob/master/kernel-howto.md) for detailed information.
 
 ### Cross-compilation
 
