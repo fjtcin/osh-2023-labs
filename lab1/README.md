@@ -139,10 +139,10 @@ A `_install` directory will be created after the compilation.
 Go to `_install` directory, run:
 
 ```sh
-mkdir -p etc/init.d/ dev mnt
+mkdir -p etc/init.d dev mnt
 ```
 
-Go to `_install/etc/init.d/` directory, create a file named `rcS`:
+Go to `_install/etc/init.d` directory, create a file named `rcS`:
 
 ```sh
 mkdir -p /proc
@@ -181,7 +181,7 @@ sudo mknod console c 5 1
 sudo mknod null c 1 3
 ```
 
-Finally, we pack all files in `_install/` directory to a compressed cpio file. Go to `_install/` directory and run:
+Finally, we pack all files in `_install` directory to a compressed cpio file. Go to `_install` directory and run:
 
 ```sh
 find . | cpio --quiet -H newc -o | gzip -9 -n > ../initrd.cpio.gz
