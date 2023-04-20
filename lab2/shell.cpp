@@ -15,7 +15,8 @@
 //getenv
 #include <stdlib.h>
 
-std::vector<std::string> split(std::string s/*, const std::string &delimiter*/);
+std::vector<std::string> split(std::string s, const std::string &delimiter);
+std::vector<std::string> get_args(std::string s);
 
 int main() {
   // 不同步 iostream 和 cstdio 的 buffer
@@ -31,7 +32,7 @@ int main() {
     std::getline(std::cin, cmd);
 
     // 按空格分割命令为单词
-    std::vector<std::string> args = split(cmd);
+    std::vector<std::string> args = get_args(cmd);
 
     // 没有可处理的命令
     if (args.empty()) {
@@ -118,16 +119,21 @@ int main() {
 
 // 经典的 cpp string split 实现
 // https://stackoverflow.com/a/14266139/11691878
-std::vector<std::string> split(std::string s/*, const std::string &delimiter*/) {
+std::vector<std::string> split(std::string s, const std::string &delimiter) {
   std::vector<std::string> res;
-  // size_t pos = 0;
-  // std::string token;
-  // while ((pos = s.find(delimiter)) != std::string::npos) {
-  //   token = s.substr(0, pos);
-  //   res.push_back(token);
-  //   s = s.substr(pos + delimiter.length());
-  // }
-  // res.push_back(s);
+  size_t pos = 0;
+  std::string token;
+  while ((pos = s.find(delimiter)) != std::string::npos) {
+    token = s.substr(0, pos);
+    res.push_back(token);
+    s = s.substr(pos + delimiter.length());
+  }
+  res.push_back(s);
+  return res;
+}
+
+std::vector<std::string> get_args(std::string s) {
+  std::vector<std::string> res;
   std::string buf;
   std::stringstream ss(s);
   while (ss >> buf) res.push_back(buf);
