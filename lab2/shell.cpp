@@ -52,7 +52,7 @@ int main() {
 
       // 转换失败
       if (!code_stream.eof() || code_stream.fail()) {
-        std::cout << "Invalid exit code\n";
+        std::cerr << "Invalid exit code\n";
         continue;
       }
 
@@ -61,29 +61,29 @@ int main() {
 
     if (args[0] == "pwd") {
       if (args.size() > 1) {
-        std::cout << "pwd: too many arguments\n";
+        std::cerr << "pwd: too many arguments\n";
         continue;
       }
       char buf[PATH_MAX];
       if (getcwd(buf, PATH_MAX)) {
         std::cout << buf << '\n';
       } else {
-        std::cout << "pwd: failed\n";
+        std::cerr << "pwd: failed\n";
       }
       continue;
     }
 
     if (args[0] == "cd") {
       if (args.size() > 2) {
-        std::cout << "cd: too many arguments\n";
+        std::cerr << "cd: too many arguments\n";
         continue;
       }
       if (args.size() <= 1) {
         if (chdir(getenv("HOME")))
-          std::cout << "cd: failed\n";
+          std::cerr << "cd: failed\n";
       } else {
         if (chdir(args[1].c_str()))
-          std::cout << "cd: no such file or directory: " << args[1] << '\n';
+          std::cerr << "cd: no such file or directory: " << args[1] << '\n';
       }
       continue;
     }
@@ -112,7 +112,7 @@ int main() {
     // 这里只有父进程（原进程）才会进入
     int ret = wait(nullptr);
     if (ret < 0) {
-      std::cout << "wait failed";
+      std::cerr << "wait failed";
     }
   }
 }
