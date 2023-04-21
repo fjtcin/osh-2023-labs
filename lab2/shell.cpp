@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 void exec(std::string);
+void exec_pipe(std::vector<std::string>);
 std::vector<std::string> split(std::string, const std::string&);
 std::vector<std::string> get_args(std::string);
 
@@ -32,7 +33,12 @@ int main() {
     // 读入一行。std::getline 结果不包含换行符。
     std::getline(std::cin, cmd);
 
-    exec(cmd);
+    std::vector<std::string> cmd_list = split(cmd, "|");
+    if (cmd_list.size() > 1) {
+      exec_pipe(cmd_list);
+    } else {
+      exec(cmd_list[0]);
+    }
   }
 }
 
@@ -116,9 +122,40 @@ void exec(std::string cmd) {
   }
 
   // 这里只有父进程（原进程）才会进入
-  int ret = wait(nullptr);
-  if (ret < 0) {
-    std::cerr << "wait failed";
+  if (wait(nullptr) < 0) std::cerr << "wait failed\n";
+}
+
+void exec_pipe(std::vector<std::string> cmd_list) {
+  int num = cmd_list.size(), last_fd0;
+  for (int i = 0; i < num; i++) {
+    int fd[2];
+    if (i < num - 1 && pipe(fd) < 0) {
+      std::cerr << "pipe failed\n";
+      return;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+      std::cerr << "fork failed\n";
+      return;
+    }
+    if (pid == 0) {
+      if (i > 0) dup2(last_fd0, 0);
+      if (i < num - 1) dup2(fd[1], 1);
+      exec(cmd_list[i]);
+      exit(0);
+    }
+    if (wait(nullptr) < 0) std::cerr << "wait failed\n";
+    if (i > 0 && close(last_fd0)) {
+      std::cerr << "close failed\n";
+      return;
+    }
+    if (i < num - 1) {
+      if (close(fd[1])) {
+        std::cerr << "close failed\n";
+        return;
+      }
+      last_fd0 = fd[0];
+    }
   }
 }
 
