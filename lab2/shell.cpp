@@ -14,6 +14,8 @@
 #include <sys/wait.h>
 //getenv
 #include <stdlib.h>
+// open
+#include <fcntl.h>
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
@@ -105,7 +107,7 @@ void exec(std::string cmd) {
 
   // std::vector<std::string> 转 char **
   char *arg_ptrs[args.size() + 1];
-  for (auto i = 0; i < args.size(); i++) {
+  for (size_t i = 0; i < args.size(); i++) {
     arg_ptrs[i] = &args[i][0];
   }
   // exec p 系列的 argv 需要以 nullptr 结尾
@@ -139,8 +141,14 @@ void exec_pipe(std::vector<std::string> cmd_list) {
       return;
     }
     if (pid == 0) {
-      if (i > 0) dup2(last_fd0, 0);
-      if (i < num - 1) dup2(fd[1], 1);
+      if (i > 0 && dup2(last_fd0, 0) < 0) {
+        std::cerr << "dup2 failed\n";
+        return;
+      }
+      if (i < num - 1 && dup2(fd[1], 1) < 0) {
+        std::cerr << "dup2 failed\n";
+        return;
+      }
       exec(cmd_list[i]);
       exit(0);
     }
