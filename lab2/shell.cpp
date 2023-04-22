@@ -18,33 +18,66 @@
 #include <fcntl.h>
 // file mode bits
 #include <sys/stat.h>
+// std::signal
+#include <csignal>
+
+int pid_gb;
+bool interupted;
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
 void redirect(std::vector<std::string>&);
+extern "C" void handler(int);
 std::vector<std::string> split(std::string, const std::string&);
 std::vector<std::string> get_args(const std::string&);
 int st2i(const std::string&);
 
 int main() {
+  struct sigaction s;
+  s.sa_handler = handler;
+  sigemptyset(&s.sa_mask);
+  s.sa_flags = SA_RESTART;
+  sigaction(SIGINT, &s, NULL);
+
   // 不同步 iostream 和 cstdio 的 buffer
   std::ios::sync_with_stdio(false);
 
   // 用来存储读入的一行命令
   std::string cmd;
-  while (true) {
-    // 打印提示符
-    std::cout << "# ";
 
-    // 读入一行。std::getline 结果不包含换行符。
-    std::getline(std::cin, cmd);
-
-    std::vector<std::string> cmd_list = split(cmd, "|");
-    if (cmd_list.size() > 1) {
-      exec_pipe(cmd_list);
-    } else {
-      exec(cmd_list[0]);
+  while(true) {
+    interupted = false;
+    pid_gb = fork();
+    if (pid_gb < 0) {
+      std::cerr << "fork failed\n";
+      return 0;
     }
+    if (pid_gb == 0) {
+      while (true) {
+        // 打印提示符
+        std::cout << "# ";
+
+        if (std::cin.peek() != std::char_traits<char>::eof()) {
+          // 读入一行。std::getline 结果不包含换行符。
+          std::getline(std::cin, cmd);
+        } else {
+          std::cout << "exit\n";
+          exit(0);
+        }
+
+        std::vector<std::string> cmd_list = split(cmd, "|");
+        if (cmd_list.size() > 1) {
+          exec_pipe(cmd_list);
+        } else {
+          exec(cmd_list[0]);
+        }
+      }
+    }
+    if (wait(nullptr) < 0) {
+      std::cerr << "wait failed\n";
+      return 0;
+    }
+    if (!interupted) return 0;
   }
 }
 
@@ -304,6 +337,15 @@ void redirect(std::vector<std::string>& args) {
       continue;
     }
     ++it;
+  }
+}
+
+void handler(int sig) {
+  interupted = true;
+  if (pid_gb == 0) {
+    exit(0);
+  } else {
+    std::cout << std::endl;
   }
 }
 
