@@ -192,7 +192,28 @@ void redirect(std::vector<std::string>& args) {
       const auto arg = it->substr(i+1);
       if (arg.size() == 2) {
         if (arg[0] == '<' && arg[1] == '<') {
-          ++it;
+          it = args.erase(it);
+          if (it == args.end()) {
+            std::cerr << "redirect failed\n";
+            args.clear();
+            return;
+          }
+          char tf[] = "/tmp/XXXXXX";
+          int tfd;
+          if ((tfd = mkstemp(tf)) < 0) {
+            std::cerr << "redirect failed\n";
+            args.clear();
+            return;
+          }
+          it->push_back('\n');
+          write(tfd, it->c_str(), it->size());
+          close(tfd);
+          if ((fd = open(tf, O_RDONLY)) < 0) {
+            std::cerr << "open failed\n";
+            args.clear();
+            return;
+          }
+          it = args.erase(it);
         } else {
           std::cerr << "redirect failed\n";
           args.clear();
@@ -218,19 +239,19 @@ void redirect(std::vector<std::string>& args) {
           args.clear();
           return;
         }
-        if (dup2(fd, fd2) < 0) {
-          std::cerr << "dup2 failed\n";
-          args.clear();
-          return;
-        }
-        if (close(fd) < 0) {
-          std::cerr << "close failed\n";
-          args.clear();
-          return;
-        }
         it = args.erase(it);
       } else {
         std::cerr << "redirect failed\n";
+        args.clear();
+        return;
+      }
+      if (dup2(fd, fd2) < 0) {
+        std::cerr << "dup2 failed\n";
+        args.clear();
+        return;
+      }
+      if (close(fd) < 0) {
+        std::cerr << "close failed\n";
         args.clear();
         return;
       }
