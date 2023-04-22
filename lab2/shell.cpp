@@ -190,51 +190,16 @@ void redirect(std::vector<std::string>& args) {
         return;
       }
       const auto arg = it->substr(i+1);
-      if (arg.size() == 2) {
-        if (arg[0] == '<' && arg[1] == '<') {
-          it = args.erase(it);
-          if (it == args.end()) {
-            std::cerr << "redirect failed\n";
-            args.clear();
-            return;
-          }
-          char tf[] = "/tmp/XXXXXX";
-          int tfd;
-          if ((tfd = mkstemp(tf)) < 0) {
-            std::cerr << "redirect failed\n";
-            args.clear();
-            return;
-          }
-          it->push_back('\n');
-          if (write(tfd, it->c_str(), it->size()) < 0) {
-            std::cerr << "write failed\n";
-            args.clear();
-            return;
-          }
-          if (close(tfd) < 0) {
-            std::cerr << "close failed\n";
-            args.clear();
-            return;
-          }
-          if ((fd = open(tf, O_RDONLY)) < 0) {
-            std::cerr << "open failed\n";
-            args.clear();
-            return;
-          }
-          it = args.erase(it);
-        } else {
+      const auto arg_size = arg.size();
+      if ((arg_size == 2 && arg[0] == '<' && arg[1] == '<') ||
+          (arg_size == 1 && arg[0] == '<') || arg_size == 0) {
+        it = args.erase(it);
+        if (it == args.end()) {
           std::cerr << "redirect failed\n";
           args.clear();
           return;
         }
-      } else if (arg.size() == 1) {
-        if (arg[0] == '<') {
-          it = args.erase(it);
-          if (it == args.end()) {
-            std::cerr << "redirect failed\n";
-            args.clear();
-            return;
-          }
+        if (arg_size) {
           char tf[] = "/tmp/XXXXXX";
           int tfd;
           if ((tfd = mkstemp(tf)) < 0) {
@@ -242,15 +207,24 @@ void redirect(std::vector<std::string>& args) {
             args.clear();
             return;
           }
-          std::string here;
-          while (true) {
-            std::getline(std::cin, here);
-            if (here == *it) break;
-            here.push_back('\n');
-            if (write(tfd, here.c_str(), here.size()) < 0) {
+          if (arg_size == 2) {
+            it->push_back('\n');
+            if (write(tfd, it->c_str(), it->size()) < 0) {
               std::cerr << "write failed\n";
               args.clear();
               return;
+            }
+          } else {
+            std::string here;
+            while (true) {
+              std::getline(std::cin, here);
+              if (here == *it) break;
+              here.push_back('\n');
+              if (write(tfd, here.c_str(), here.size()) < 0) {
+                std::cerr << "write failed\n";
+                args.clear();
+                return;
+              }
             }
           }
           if (close(tfd) < 0) {
@@ -263,23 +237,12 @@ void redirect(std::vector<std::string>& args) {
             args.clear();
             return;
           }
-          it = args.erase(it);
         } else {
-          std::cerr << "redirect failed\n";
-          args.clear();
-          return;
-        }
-      } else if (arg.empty()) {
-        it = args.erase(it);
-        if (it == args.end()) {
-          std::cerr << "redirect failed\n";
-          args.clear();
-          return;
-        }
-        if ((fd = open(it->c_str(), O_RDONLY)) < 0) {
-          std::cerr << "open failed\n";
-          args.clear();
-          return;
+          if ((fd = open(it->c_str(), O_RDONLY)) < 0) {
+            std::cerr << "open failed\n";
+            args.clear();
+            return;
+          }
         }
         it = args.erase(it);
       } else {
