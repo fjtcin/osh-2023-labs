@@ -206,8 +206,16 @@ void redirect(std::vector<std::string>& args) {
             return;
           }
           it->push_back('\n');
-          write(tfd, it->c_str(), it->size());
-          close(tfd);
+          if (write(tfd, it->c_str(), it->size()) < 0) {
+            std::cerr << "write failed\n";
+            args.clear();
+            return;
+          }
+          if (close(tfd) < 0) {
+            std::cerr << "close failed\n";
+            args.clear();
+            return;
+          }
           if ((fd = open(tf, O_RDONLY)) < 0) {
             std::cerr << "open failed\n";
             args.clear();
@@ -221,7 +229,41 @@ void redirect(std::vector<std::string>& args) {
         }
       } else if (arg.size() == 1) {
         if (arg[0] == '<') {
-          ++it;
+          it = args.erase(it);
+          if (it == args.end()) {
+            std::cerr << "redirect failed\n";
+            args.clear();
+            return;
+          }
+          char tf[] = "/tmp/XXXXXX";
+          int tfd;
+          if ((tfd = mkstemp(tf)) < 0) {
+            std::cerr << "redirect failed\n";
+            args.clear();
+            return;
+          }
+          std::string here;
+          while (true) {
+            std::getline(std::cin, here);
+            if (here == *it) break;
+            here.push_back('\n');
+            if (write(tfd, here.c_str(), here.size()) < 0) {
+              std::cerr << "write failed\n";
+              args.clear();
+              return;
+            }
+          }
+          if (close(tfd) < 0) {
+            std::cerr << "close failed\n";
+            args.clear();
+            return;
+          }
+          if ((fd = open(tf, O_RDONLY)) < 0) {
+            std::cerr << "open failed\n";
+            args.clear();
+            return;
+          }
+          it = args.erase(it);
         } else {
           std::cerr << "redirect failed\n";
           args.clear();
