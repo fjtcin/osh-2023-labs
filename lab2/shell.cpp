@@ -16,6 +16,8 @@
 #include <cstdlib>
 // open
 #include <fcntl.h>
+// file mode bits
+#include <sys/stat.h>
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
@@ -236,7 +238,51 @@ void redirect(std::vector<std::string>& args) {
     }
     i = it->find(">");
     if (i != std::string::npos) {
-      ++it;
+      if (i == 0) {
+        fd2 = 1;
+      } else if ((fd2 = st2i(it->substr(0, i))) == -1) {
+        std::cerr << "redirect failed\n";
+        args.clear();
+        return;
+      }
+      const auto arg = it->substr(i+1);
+      if (arg.size() == 1) {
+        if (arg[0] == '>') {
+          ++it;
+        } else {
+          std::cerr << "redirect failed\n";
+          args.clear();
+          return;
+        }
+      } else if (arg.empty()) {
+        it = args.erase(it);
+        if (it == args.end()) {
+          std::cerr << "redirect failed\n";
+          args.clear();
+          return;
+        }
+        if ((fd = open(it->c_str(), O_WRONLY | O_CREAT | O_TRUNC,
+            S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)) < 0) { // -rw-r--r--
+          std::cerr << "open failed\n";
+          args.clear();
+          return;
+        };
+        if (dup2(fd, fd2) < 0) {
+          std::cerr << "dup2 failed\n";
+          args.clear();
+          return;
+        }
+        if (close(fd) < 0) {
+          std::cerr << "close failed\n";
+          args.clear();
+          return;
+        }
+        it = args.erase(it);
+      } else {
+        std::cerr << "redirect failed\n";
+        args.clear();
+        return;
+      }
       continue;
     }
     ++it;
