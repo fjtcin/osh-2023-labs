@@ -17,8 +17,6 @@
 // open
 #include <fcntl.h>
 
-#define REDIRECT_MSG "redirect: not a redirection or syntex not supported, no redirection processed\n"
-
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
 void redirect(std::vector<std::string>&);
@@ -115,6 +113,7 @@ void exec(std::string cmd) {
   if (pid == 0) {
     // 这里只有子进程才会进入
     redirect(args);
+    if(args.size() == 0) exit(0);
 
     // std::vector<std::string> 转 char **
     char *arg_ptrs[args.size() + 1];
@@ -184,27 +183,34 @@ void redirect(std::vector<std::string>& args) {
       if (i == 0) {
         fd2 = 0;
       } else if ((fd2 = st2i(it->substr(0, i))) == -1) {
-        std::cerr << REDIRECT_MSG;
-        ++it;
-        continue;
+        std::cerr << "redirect failed\n";
+        args.clear();
+        return;
       }
       const auto arg = it->substr(i+1);
       if (arg.size() == 2) {
         if (arg[0] == '<' && arg[1] == '<') {
           ++it;
         } else {
-          std::cerr << REDIRECT_MSG;
-          ++it;
+          std::cerr << "redirect failed\n";
+          args.clear();
+          return;
         }
       } else if (arg.size() == 1) {
         if (arg[0] == '<') {
           ++it;
         } else {
-          std::cerr << REDIRECT_MSG;
-          ++it;
+          std::cerr << "redirect failed\n";
+          args.clear();
+          return;
         }
       } else if (arg.empty()) {
         it = args.erase(it);
+        if (it == args.end()) {
+          std::cerr << "redirect failed\n";
+          args.clear();
+          return;
+        }
         if ((fd = open(it->c_str(), O_RDONLY)) < 0) {
           std::cerr << "open failed\n";
           args.clear();
@@ -222,8 +228,9 @@ void redirect(std::vector<std::string>& args) {
         }
         it = args.erase(it);
       } else {
-        ++it;
-        std::cerr << REDIRECT_MSG;
+        std::cerr << "redirect failed\n";
+        args.clear();
+        return;
       }
       continue;
     }
