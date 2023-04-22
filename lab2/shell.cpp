@@ -20,9 +20,12 @@
 #include <sys/stat.h>
 // std::signal
 #include <csignal>
+// std::stack
+#include <stack>
 
 int pid_gb;
 bool interupted;
+std::stack<pid_t> suspended;
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
@@ -73,8 +76,9 @@ int main() {
         }
       }
     }
-    if (wait(nullptr) < 0) {
-      std::cerr << "wait failed\n";
+    int stat;
+    if (waitpid(pid_gb, &stat, 0) < 0) {
+      std::cerr << "waitpid failed\n";
       return 0;
     }
     if (!interupted) return 0;
@@ -139,20 +143,42 @@ void exec(std::string cmd) {
     return;
   }
 
+  if (args[0] == "wait") {
+    if (args.size() > 1) {
+      std::cerr << "wait: too many arguments\n";
+      return;
+    }
+    while(!suspended.empty()) {
+      int stat;
+      if (waitpid(suspended.top(), &stat, 0) < 0)
+        std::cerr << "waitpid failed\n";
+      suspended.pop();
+    }
+    return;
+  }
+
   // 处理外部命令
   pid_t pid = fork();
   if (pid < 0) {
     std::cerr << "fork failed\n";
     return;
   }
+  bool sspd = false;
+  if (args.back() == "&") {
+    args.pop_back();
+    // setpgid(0, 0);
+    suspended.push(pid);
+    sspd = true;
+  }
   if (pid == 0) {
     // 这里只有子进程才会进入
+    if (sspd) setpgid(0, 0);
     redirect(args);
     if(args.size() == 0) exit(0);
 
     // std::vector<std::string> 转 char **
     char *arg_ptrs[args.size() + 1];
-    for (std::size_t i = 0; i < args.size(); i++)
+    for (std::size_t i = 0; i < args.size(); ++i)
       arg_ptrs[i] = &args[i][0];
     // exec p 系列的 argv 需要以 nullptr 结尾
     arg_ptrs[args.size()] = nullptr;
@@ -166,13 +192,20 @@ void exec(std::string cmd) {
   }
 
   // 这里只有父进程（原进程）才会进入
-  if (wait(nullptr) < 0) std::cerr << "wait failed\n";
+  int stat;
+  if (sspd) {
+    if (waitpid(pid, &stat, WNOHANG) < 0)
+      std::cerr << "waitpid failed\n";
+  } else {
+    if (waitpid(pid, &stat, 0) < 0)
+      std::cerr << "waitpid failed\n";
+  }
 }
 
 void exec_pipe(std::vector<std::string> cmd_list) {
   const auto num = cmd_list.size();
   int last_fd0;
-  for (std::size_t i = 0; i < num; i++) {
+  for (std::size_t i = 0; i < num; ++i) {
     int fd[2];
     if (i < num - 1 && pipe(fd) < 0) {
       std::cerr << "pipe failed\n";
@@ -195,7 +228,8 @@ void exec_pipe(std::vector<std::string> cmd_list) {
       exec(cmd_list[i]);
       exit(0);
     }
-    if (wait(nullptr) < 0) std::cerr << "wait failed\n";
+    int stat;
+    if (waitpid(pid, &stat, 0) < 0) std::cerr << "waitpid failed\n";
     if (i > 0 && close(last_fd0)) {
       std::cerr << "close failed\n";
       return;
