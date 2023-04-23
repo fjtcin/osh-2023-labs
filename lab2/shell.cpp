@@ -24,7 +24,7 @@
 // std::remove_if
 #include <algorithm>
 
-struct sigaction action;
+struct sigaction action, tty;
 const std::string STATE[3] = {"Running  ", "Done     ", "Suspended"};
 struct job_t {
   size_t jobid;
@@ -53,6 +53,9 @@ int main() {
 
   // 用来存储读入的一行命令
   std::string cmd;
+
+  sigemptyset(&tty.sa_mask);
+  tty.sa_flags = 0;
 
   sigemptyset(&action.sa_mask);
   action.sa_flags = 0;
@@ -171,15 +174,26 @@ void exec(std::string cmd) {
   }
 
   if (args[0] == "fg") {
+    if (jobs.empty()) {
+      std::cerr << "fg: no background or suspended jobs\n";
+      return;
+    }
     if (args.size() > 2) {
       std::cerr << "fg: too many arguments\n";
     } else if (args.size() == 1) {
-      std::cerr << jobs.back().pid << '\n';
-      if (tcsetpgrp(0, jobs.back().pid) < 0) {
-        std::cerr << "tcsetpgrp failed\n";
-      } else {
-        jobs.pop_back();
+      tty.sa_handler = SIG_IGN;
+      if (sigaction(SIGTTOU, &tty, nullptr) < 0) {
+        std::cerr << "signaction error\n";
+        return;
       }
+      pid_t pid = jobs.back().pid;
+      if (tcsetpgrp(0, pid) < 0) {
+        std::cerr << "tcsetpgrp failed\n";
+      }
+      int status;
+      waitpid(pid, &status, 0);
+      tcsetpgrp(0, getpid());
+      jobs.pop_back();
     } else {
       // to be implemented
     }
@@ -195,7 +209,10 @@ void exec(std::string cmd) {
   if (pid == 0) {
     // 这里只有子进程才会进入
     if (args.back() == "&") {
-      setpgid(0, 0);
+      if (setpgid(0, 0) < 0) {
+        std::cerr << "setpgid failed\n";
+        exit(0);
+      }
       args.pop_back();
     }
     redirect(args);
@@ -225,7 +242,6 @@ void exec(std::string cmd) {
     }
   }
   if (args.back() == "&") {
-    setpgid(pid, pid);
     job_t new_job;
     new_job.jobid = 0;
     std::vector<bool> jobid_list(jobs.size() + 1); // initialized with zeros
