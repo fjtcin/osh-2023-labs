@@ -88,8 +88,8 @@ int main() {
         }
       }
     }
-    int stat;
-    if (waitpid(pid_gb, &stat, 0) < 0) {
+    int status;
+    if (waitpid(pid_gb, &status, 0) < 0) {
       std::cerr << "waitpid failed\n";
       return 0;
     }
@@ -169,8 +169,8 @@ void exec(std::string cmd) {
   if (args[0] == "wait") {
     for (auto& job : jobs) {
       if (job.stateid == 0) {
-        int stat;
-        if (waitpid(job.pid, &stat, 0) < 0) {
+        int status;
+        if (waitpid(job.pid, &status, 0) < 0) {
           std::cerr << "waitpid failed\n";
           return;
         }
@@ -188,28 +188,12 @@ void exec(std::string cmd) {
     std::cerr << "fork failed\n";
     return;
   }
-  bool sspd = false;
-  if (args.back() == "&") {
-    args.pop_back();
-    // setpgid(0, 0);
-    job_t new_job;
-    new_job.jobid = 0;
-    std::vector<bool> jobid_list(jobs.size() + 1); // initialized with zeros
-    for (const auto job:jobs) jobid_list[job.jobid] = true;
-    for (size_t i = 1; i < jobid_list.size(); ++i)
-      if (!jobid_list[i]) {
-        new_job.jobid = i;
-      }
-    if (new_job.jobid == 0) new_job.jobid = jobs.size() + 1;
-    new_job.pid = pid;
-    new_job.stateid = 0;
-    new_job.name = cmd;
-    jobs.push_back(new_job);
-    sspd = true;
-  }
   if (pid == 0) {
     // 这里只有子进程才会进入
-    if (sspd) setpgid(0, 0);
+    if (args.back() == "&") {
+      setpgid(0, 0);
+      args.pop_back();
+    }
     redirect(args);
     if(args.size() == 0) std::exit(0);
 
@@ -229,10 +213,27 @@ void exec(std::string cmd) {
   }
 
   // 这里只有父进程（原进程）才会进入
-  int stat;
-  if (!sspd && waitpid(pid, &stat, 0) < 0) {
-    std::cerr << "waitpid failed\n";
-    return;
+  if (args.back() == "&") {
+    setpgid(pid, pid);
+    job_t new_job;
+    new_job.jobid = 0;
+    std::vector<bool> jobid_list(jobs.size() + 1); // initialized with zeros
+    for (const auto job:jobs) jobid_list[job.jobid] = true;
+    for (size_t i = 1; i < jobid_list.size(); ++i)
+      if (!jobid_list[i]) {
+        new_job.jobid = i;
+      }
+    if (new_job.jobid == 0) new_job.jobid = jobs.size() + 1;
+    new_job.pid = pid;
+    new_job.stateid = 0;
+    new_job.name = cmd;
+    jobs.push_back(new_job);
+  } else {
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
+      std::cerr << "waitpid failed\n";
+      return;
+    }
   }
 }
 
@@ -262,8 +263,8 @@ void exec_pipe(std::vector<std::string> cmd_list) {
       exec(cmd_list[i]);
       std::exit(0);
     }
-    int stat;
-    if (waitpid(pid, &stat, 0) < 0) {
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
       std::cerr << "waitpid failed\n";
       return;
     }
@@ -470,8 +471,8 @@ void clear_done_jobs() {
 void check_done_jobs() {
   for (auto& job : jobs) {
     if (job.stateid == 0) {
-      int stat;
-      auto ret = waitpid(job.pid, &stat, WNOHANG);
+      int status;
+      auto ret = waitpid(job.pid, &status, WNOHANG);
       if (ret < 0) {
         std::cerr << "waitpid failed\n";
         return;
