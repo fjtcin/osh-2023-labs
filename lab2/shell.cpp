@@ -20,12 +20,19 @@
 #include <sys/stat.h>
 // std::signal
 #include <csignal>
-// std::stack
-#include <stack>
+// std::remove_if
+#include <algorithm>
 
 int pid_gb;
 bool interupted;
-std::stack<pid_t> suspended;
+const std::string STATE[3] = {"Running  ", "Done     ", "Suspended"};
+struct job_t {
+  size_t jobid;
+  pid_t pid;
+  size_t stateid;
+  std::string name;
+};
+std::vector<job_t> jobs;
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
@@ -34,6 +41,9 @@ extern "C" void handler(int);
 std::vector<std::string> split(std::string, const std::string&);
 std::vector<std::string> get_args(const std::string&);
 int st2i(const std::string&);
+void print_job(const job_t&);
+void clear_done_jobs();
+void check_done_jobs();
 
 int main() {
   struct sigaction s;
@@ -57,6 +67,8 @@ int main() {
     }
     if (pid_gb == 0) {
       while (true) {
+        check_done_jobs();
+
         // 打印提示符
         std::cout << "# ";
 
@@ -65,7 +77,7 @@ int main() {
           std::getline(std::cin, cmd);
         } else {
           std::cout << "exit\n";
-          exit(0);
+          std::exit(0);
         }
 
         std::vector<std::string> cmd_list = split(cmd, "|");
@@ -97,21 +109,24 @@ void exec(std::string cmd) {
   // 退出
   if (args[0] == "exit") {
     if (args.size() <= 1) {
-      exit(0);
+      std::exit(0);
     }
 
     // std::string 转 int
-    std::stringstream code_stream(args[1]);
-    int code = 0;
-    code_stream >> code;
-
+    // std::stringstream code_stream(args[1]);
+    // int code = 0;
+    // code_stream >> code;
     // 转换失败
-    if (!code_stream.eof() || code_stream.fail()) {
+    // if (!code_stream.eof() || code_stream.fail()) {
+    //   std::cerr << "exit: invalid exit code\n";
+    //   return;
+    // }
+    try {
+      std::exit(std::stoi(args[1]));
+    } catch (...) {
       std::cerr << "exit: invalid exit code\n";
       return;
     }
-
-    exit(code);
   }
 
   if (args[0] == "pwd") {
@@ -143,17 +158,27 @@ void exec(std::string cmd) {
     return;
   }
 
+  if (args[0] == "jobs") {
+    check_done_jobs();
+    const auto jobs_size = jobs.size();
+    for (size_t i = 0; i < jobs_size; ++i) {
+      print_job(jobs[i]);
+    }
+  }
+
   if (args[0] == "wait") {
-    if (args.size() > 1) {
-      std::cerr << "wait: too many arguments\n";
-      return;
+    for (auto& job : jobs) {
+      if (job.stateid == 0) {
+        int stat;
+        if (waitpid(job.pid, &stat, 0) < 0) {
+          std::cerr << "waitpid failed\n";
+          return;
+        }
+        job.stateid = 1;
+        print_job(job);
+      }
     }
-    while(!suspended.empty()) {
-      int stat;
-      if (waitpid(suspended.top(), &stat, 0) < 0)
-        std::cerr << "waitpid failed\n";
-      suspended.pop();
-    }
+    clear_done_jobs();
     return;
   }
 
@@ -167,14 +192,26 @@ void exec(std::string cmd) {
   if (args.back() == "&") {
     args.pop_back();
     // setpgid(0, 0);
-    suspended.push(pid);
+    job_t new_job;
+    new_job.jobid = 0;
+    std::vector<bool> jobid_list(jobs.size() + 1); // initialized with zeros
+    for (const auto job:jobs) jobid_list[job.jobid] = true;
+    for (size_t i = 1; i < jobid_list.size(); ++i)
+      if (!jobid_list[i]) {
+        new_job.jobid = i;
+      }
+    if (new_job.jobid == 0) new_job.jobid = jobs.size() + 1;
+    new_job.pid = pid;
+    new_job.stateid = 0;
+    new_job.name = cmd;
+    jobs.push_back(new_job);
     sspd = true;
   }
   if (pid == 0) {
     // 这里只有子进程才会进入
     if (sspd) setpgid(0, 0);
     redirect(args);
-    if(args.size() == 0) exit(0);
+    if(args.size() == 0) std::exit(0);
 
     // std::vector<std::string> 转 char **
     char *arg_ptrs[args.size() + 1];
@@ -188,17 +225,14 @@ void exec(std::string cmd) {
     execvp(args[0].c_str(), arg_ptrs);
 
     // 所以这里直接报错
-    exit(255);
+    std::exit(255);
   }
 
   // 这里只有父进程（原进程）才会进入
   int stat;
-  if (sspd) {
-    if (waitpid(pid, &stat, WNOHANG) < 0)
-      std::cerr << "waitpid failed\n";
-  } else {
-    if (waitpid(pid, &stat, 0) < 0)
-      std::cerr << "waitpid failed\n";
+  if (!sspd && waitpid(pid, &stat, 0) < 0) {
+    std::cerr << "waitpid failed\n";
+    return;
   }
 }
 
@@ -226,10 +260,13 @@ void exec_pipe(std::vector<std::string> cmd_list) {
         return;
       }
       exec(cmd_list[i]);
-      exit(0);
+      std::exit(0);
     }
     int stat;
-    if (waitpid(pid, &stat, 0) < 0) std::cerr << "waitpid failed\n";
+    if (waitpid(pid, &stat, 0) < 0) {
+      std::cerr << "waitpid failed\n";
+      return;
+    }
     if (i > 0 && close(last_fd0)) {
       std::cerr << "close failed\n";
       return;
@@ -377,7 +414,7 @@ void redirect(std::vector<std::string>& args) {
 void handler(int sig) {
   interupted = true;
   if (pid_gb == 0) {
-    exit(0);
+    std::exit(0);
   } else {
     std::cout << std::endl;
   }
@@ -415,4 +452,36 @@ int st2i(const std::string& s) {
   } catch (...) {
     return -1;
   }
+}
+
+void print_job(const job_t& job) {
+  std::cout << '[' << job.jobid << "]  "
+  << ((job.pid == jobs.back().pid) ? '+' : ((job.pid == jobs.end()[-2].pid) ? '-' : ' '))
+  << ' ' << STATE[job.stateid] << "  " << job.name << std::endl;
+}
+
+void clear_done_jobs() {
+  jobs.erase(std::remove_if(jobs.begin(), 
+                          jobs.end(),
+                          [](const job_t& job) { return job.stateid == 1; }),
+            jobs.end());
+}
+
+void check_done_jobs() {
+  for (auto& job : jobs) {
+    if (job.stateid == 0) {
+      int stat;
+      auto ret = waitpid(job.pid, &stat, WNOHANG);
+      if (ret < 0) {
+        std::cerr << "waitpid failed\n";
+        return;
+      }
+      if (ret) {
+        // child process has finished
+        job.stateid = 1;
+        print_job(job);
+      }
+    }
+  }
+  clear_done_jobs();
 }
