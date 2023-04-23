@@ -146,9 +146,7 @@ void exec(std::string cmd) {
   if (args[0] == "cd") {
     if (args.size() > 2) {
       std::cerr << "cd: too many arguments\n";
-      return;
-    }
-    if (args.size() <= 1) {
+    } else if (args.size() == 1) {
       if (chdir(std::getenv("HOME")))
         std::cerr << "cd: failed\n";
     } else {
@@ -164,6 +162,7 @@ void exec(std::string cmd) {
     for (size_t i = 0; i < jobs_size; ++i) {
       print_job(jobs[i]);
     }
+    return;
   }
 
   if (args[0] == "wait") {
@@ -179,6 +178,22 @@ void exec(std::string cmd) {
       }
     }
     clear_done_jobs();
+    return;
+  }
+
+  if (args[0] == "fg") {
+    if (args.size() > 2) {
+      std::cerr << "fg: too many arguments\n";
+    } else if (args.size() == 1) {
+      std::cerr << jobs.back().pid << '\n';
+      if (tcsetpgrp(0, jobs.back().pid) < 0) {
+        std::cerr << "tcsetpgrp failed\n";
+      } else {
+        jobs.pop_back();
+      }
+    } else {
+      // to be implemented
+    }
     return;
   }
 
@@ -458,7 +473,7 @@ int st2i(const std::string& s) {
 void print_job(const job_t& job) {
   std::cout << '[' << job.jobid << "]  "
   << ((job.pid == jobs.back().pid) ? '+' : ((job.pid == jobs.end()[-2].pid) ? '-' : ' '))
-  << ' ' << STATE[job.stateid] << "  " << job.name << std::endl;
+  << ' ' << job.pid << ' ' << STATE[job.stateid] << "  " << job.name << std::endl;
 }
 
 void clear_done_jobs() {
