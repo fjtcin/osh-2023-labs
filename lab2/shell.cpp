@@ -66,7 +66,7 @@ int main() {
     action.sa_handler = handler;
     if (sigaction(SIGINT, &action, nullptr) < 0) {
       std::cerr << "signaction error\n";
-      return 1;
+      return 0;
     }
     check_done_jobs();
 
@@ -208,6 +208,11 @@ void exec(std::string cmd) {
   }
   if (pid == 0) {
     // 这里只有子进程才会进入
+    tty.sa_handler = SIG_DFL;
+    if (sigaction(SIGTTOU, &tty, nullptr) < 0) {
+      std::cerr << "signaction error\n";
+      return;
+    }
     if (args.back() == "&") {
       if (setpgid(0, 0) < 0) {
         std::cerr << "setpgid failed\n";
@@ -255,6 +260,7 @@ void exec(std::string cmd) {
     new_job.stateid = 0;
     new_job.name = cmd;
     jobs.push_back(new_job);
+    std::cout << '[' << new_job.jobid << "] " << new_job.pid << std::endl;
   } else {
     int status;
     if (waitpid(pid, &status, 0) < 0) {
