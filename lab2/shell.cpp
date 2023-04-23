@@ -18,13 +18,13 @@
 #include <fcntl.h>
 // file mode bits
 #include <sys/stat.h>
-// std::signal
+// signal processing
 #include <csignal>
+#include <csetjmp>
 // std::remove_if
 #include <algorithm>
 
-int pid_gb;
-bool interupted;
+struct sigaction action;
 const std::string STATE[3] = {"Running  ", "Done     ", "Suspended"};
 struct job_t {
   size_t jobid;
@@ -33,6 +33,8 @@ struct job_t {
   std::string name;
 };
 std::vector<job_t> jobs;
+static sigjmp_buf env;
+static volatile sig_atomic_t jmp_set;
 
 void exec(std::string);
 void exec_pipe(std::vector<std::string>);
@@ -46,54 +48,41 @@ void clear_done_jobs();
 void check_done_jobs();
 
 int main() {
-  struct sigaction s;
-  s.sa_handler = handler;
-  sigemptyset(&s.sa_mask);
-  s.sa_flags = SA_RESTART;
-  sigaction(SIGINT, &s, NULL);
-
   // 不同步 iostream 和 cstdio 的 buffer
   std::ios::sync_with_stdio(false);
 
   // 用来存储读入的一行命令
   std::string cmd;
 
-  while(true) {
-    interupted = false;
-    pid_gb = fork();
-    if (pid_gb < 0) {
-      std::cerr << "fork failed\n";
-      return 0;
-    }
-    if (pid_gb == 0) {
-      while (true) {
-        check_done_jobs();
+  sigemptyset(&action.sa_mask);
+  action.sa_flags = 0;
+  if (sigsetjmp(env, 1)) std::cout << '\n';
+  jmp_set = 1;
 
-        // 打印提示符
-        std::cout << "# ";
-
-        if (std::cin.peek() != std::char_traits<char>::eof()) {
-          // 读入一行。std::getline 结果不包含换行符。
-          std::getline(std::cin, cmd);
-        } else {
-          std::cout << "exit\n";
-          std::exit(0);
-        }
-
-        std::vector<std::string> cmd_list = split(cmd, "|");
-        if (cmd_list.size() > 1) {
-          exec_pipe(cmd_list);
-        } else {
-          exec(cmd_list[0]);
-        }
-      }
+  while (true) {
+    action.sa_handler = handler;
+    if (sigaction(SIGINT, &action, nullptr) < 0) {
+      std::cerr << "signaction error\n";
+      return 1;
     }
-    int status;
-    if (waitpid(pid_gb, &status, 0) < 0) {
-      std::cerr << "waitpid failed\n";
-      return 0;
+    check_done_jobs();
+
+    // 打印提示符
+    std::cout << "# ";
+
+    // 读入一行。std::getline 结果不包含换行符。
+    std::getline(std::cin, cmd);
+    if (std::cin.eof()) {
+      std::cout << "exit\n";
+      std::exit(0);
     }
-    if (!interupted) return 0;
+
+    std::vector<std::string> cmd_list = split(cmd, "|");
+    if (cmd_list.size() > 1) {
+      exec_pipe(cmd_list);
+    } else {
+      exec(cmd_list[0]);
+    }
   }
 }
 
@@ -228,6 +217,13 @@ void exec(std::string cmd) {
   }
 
   // 这里只有父进程（原进程）才会进入
+  if (args.size() == 1 && args[0] == "./shell") {
+    action.sa_handler = SIG_IGN;
+    if (sigaction(SIGINT, &action, nullptr) < 0) {
+      std::cerr << "signaction error\n";
+      return;
+    }
+  }
   if (args.back() == "&") {
     setpgid(pid, pid);
     job_t new_job;
@@ -427,12 +423,10 @@ void redirect(std::vector<std::string>& args) {
   }
 }
 
-void handler(int sig) {
-  interupted = true;
-  if (pid_gb == 0) {
-    std::exit(0);
-  } else {
-    std::cout << std::endl;
+void handler(int signum) {
+  if (jmp_set == 0) return;
+  if (signum == SIGINT) {
+    siglongjmp(env, 1);
   }
 }
 
