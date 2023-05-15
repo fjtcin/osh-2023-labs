@@ -125,6 +125,7 @@ void handle_clnt(int clnt_sock) {
         if (sendfile(clnt_sock, fd, &offset, stats.st_size - offset) < 0)
           perrExit("sendfile() failed");
       }
+      if (close(fd) < 0) perrExit("close() failed");
       break;
     }
     case 404: {
