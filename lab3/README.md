@@ -7,7 +7,7 @@ For the compulsory part, we completed `server.c`, which employs the POSIX thread
 ### Concurrent request handling (并发请求处理)
 
 We designed a thread pool with the `pthread.h` library,
-which will be introduced in the [Optional part](#optional-part-(选做部分)) section.
+which will be introduced in the [Optional part](#optional-part-选做部分) section.
 
 ### Parse HTTP header (解析和检验 HTTP 头)
 
