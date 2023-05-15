@@ -35,6 +35,9 @@ typedef struct
   int thread_num;
 } threadpool_t;
 
+char cwd[PATH_MAX];
+size_t cwd_size;
+
 threadpool_t *threadpool_init(int, int);
 void *thread_routine(void*);
 void threadpool_push(threadpool_t*, int);
@@ -43,6 +46,9 @@ int parse_request(char*, size_t, char*);
 void write_s(int, char*, size_t);
 
 int main(void) {
+  if (getcwd(cwd, PATH_MAX) == NULL) perrExit("getcwd() failed");
+  cwd_size = strlen(cwd);
+
   int serv_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (serv_sock < 0) perrExit("socket() failed");
 
@@ -140,6 +146,7 @@ void handle_clnt(int clnt_sock) {
     req_len = req_len + len;
     if (req_len >= 4 && !strncmp(req_buf + req_len - 4, "\r\n\r\n", 4)) break;
   }
+  free(buffer);
 
   char *file_path = malloc(PATH_MAX);
   if (file_path == NULL) perrExit("malloc() failed");
@@ -152,9 +159,12 @@ void handle_clnt(int clnt_sock) {
     if (access(file_path, F_OK) < 0) {
       status = 404;
     } else {
-      if (stat(file_path, &stats) < 0) {
+      char *real_path = realpath(file_path, NULL);
+      if (real_path == NULL) {
         status = 500;
-      } else if (!S_ISREG(stats.st_mode)) {
+      } else if (strncmp(real_path, cwd, cwd_size)) {
+        status = 404;
+      } else if (stat(file_path, &stats) < 0 || !S_ISREG(stats.st_mode)) {
         status = 500;
       } else {
         fd = open(file_path, O_RDONLY);
@@ -164,8 +174,11 @@ void handle_clnt(int clnt_sock) {
           status = 200;
         }
       }
+      free(real_path);
     }
   }
+  free(req_buf);
+  free(file_path);
 
   char* response = malloc(64);
   if (response == NULL) perrExit("malloc() failed");
@@ -193,12 +206,8 @@ void handle_clnt(int clnt_sock) {
       write_s(clnt_sock, response, response_len);
     }
   }
-
-  if (close(clnt_sock)) perrExit("close() failed");
-  free(req_buf);
-  free(buffer);
-  free(file_path);
   free(response);
+  if (close(clnt_sock)) perrExit("close() failed");
 }
 
 int parse_request(char* req, size_t req_len, char* path) {
